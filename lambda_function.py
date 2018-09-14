@@ -1,99 +1,82 @@
+# Audio Flash Briefing Generator - JSON v1.0
+# Andrew Cargill
+# Sept. 13, 2018
+
 import boto3
 import os
 import io
 import json
 import uuid
 
-# 2018-09-04 - This works but it's basically resulting in a two item feed! Don't know why yet Might be the [0] thing I'm doing when reading the file *from* s3
+# User Settings
+single_item_feed = False
+frugality = False
 
-FLASH_BRIEFING_FEED_BUCKET = os.environ['FLASH_BRIEFING_FEED_BUCKET'] # flash-briefing-feeds-acargill
-FLASH_BRIEFING_FEED_FILE_NAME = os.environ['FLASH_BRIEFING_FEED_FILE_NAME'] # for example, dag_news.json
+# Lambda Environment Variables
+fb_feed_destination_bucket = os.environ['fb_feed_destination_bucket'] # Ex: flash-briefing-feeds-bucket
+fb_feed_file_name = os.environ['fb_feed_file_name'] # Ex: breaking_news.json
 
+# Boto3 Objects
 s3 = boto3.resource("s3")
-bucket = s3.Bucket(FLASH_BRIEFING_FEED_BUCKET)
+bucket = s3.Bucket(fb_feed_destination_bucket)
 
 def feed_already_exists(bucket, file_name):
     keys =[]
     for key in bucket.objects.all():
         keys.append(key.key)
 
-    # print keys
-    
     if file_name in keys:
-        return True 
+        return True
     else:
         return False
 
+def make_title_text(object_key):
+    title_text = object_key[object_key.rfind("/")+1:] # Parse key to save only the file name at end
+    title_text = title_text.replace(".mp3", "") # Removes ".mp3" file extension
+    title_text = title_text.replace("+", " ") # Replace "+" with space. Spaces are converted to "+" in S3 trigger
+    return title_text
+
+def reduced_redundancy(bucket, file_name):
+    copy_source = {
+        "Bucket": bucket,
+        "Key": file_name
+    }
+    s3.meta.client.copy(copy_source, bucket, file_name, ExtraArgs = {'StorageClass': 'REDUCED_REDUNDANCY', 'MetadataDirective': 'COPY'})
+
 def lambda_handler(event, context):
-    if feed_already_exists(bucket, FLASH_BRIEFING_FEED_FILE_NAME):
-        print "file already exists\n"
+    print event
+    # Should store valuable events here in more friendly variable names for re-use later
 
-        # 2a. If Yes - download the existing file (function) input new item to front of dictionary
-        s3.Bucket(FLASH_BRIEFING_FEED_BUCKET).download_file(FLASH_BRIEFING_FEED_FILE_NAME, "/tmp/existing_feed.json")
-        existing_feed_pointer = "/tmp/existing_feed.json"
+    if feed_already_exists(bucket, fb_feed_file_name) and not single_item_feed:
+        s3.Bucket(fb_feed_destination_bucket).download_file(fb_feed_file_name, "/tmp/existing_feed.json")
+        feed_pointer = "/tmp/existing_feed.json"
 
-        with io.open(existing_feed_pointer, "r", encoding = "utf-8") as rf:
-            existing_feed = json.loads(rf.read())[0] # taking the json file, converting it to a dictionary (encapsulated in a list) and taking the 0 index - which is the real dictionary
-
-            print "This is the existing feed from S3\n"
-            print existing_feed
-            print "\n\n"
-
-
-        new_item = {
-            "uid": str(uuid.uuid4()),
-            "updateDate": event['Records'][0]['eventTime'],
-            "titleText": event['Records'][0]['s3']['object']['key'], # Parse this out and camel case it delete everything to the left of '/' replace anything that's not a character with a space and make caps
-            "mainText": "",
-            "streamUrl": "https://s3.amazonaws.com/" + event['Records'][0]['s3']['bucket']['name'] + "/" + event['Records'][0]['s3']['object']['key']
-        }
-
-        print "This is the new item from trigger\n"
-        print new_item
-        print "\n\n"
-        
-        new_feed = []
-        new_feed.append(new_item)
-        new_feed.append(existing_feed)
-
-        print "This is the new combined feed\n"
-        print new_feed
-
-        with io.open(existing_feed_pointer, "w", encoding = "utf-8") as wf:
-            wf.write(json.dumps(new_feed).decode("utf-8"))
-
-        s3.meta.client.upload_file(existing_feed_pointer, FLASH_BRIEFING_FEED_BUCKET, FLASH_BRIEFING_FEED_FILE_NAME, ExtraArgs={'ACL': 'public-read','ContentType': "application/json"})
-
-        #key = bucket.get_key(FLASH_BRIEFING_FEED_FILE_NAME)
-        #key.set_acl("public_read")
-
-
-        #print json.dumps(feed) #JSON-ifying Python dictionary
-
-
-
-
+        with io.open(feed_pointer, "r", encoding = "utf-8") as rf:
+            feed = json.loads(rf.read())
 
     else:
-        print "file does not exist already"
-    
-    
-    # Question: Can I used the multi-item format for a feed with one item?
-    # Answer: Yes
-    
-    # Feed if it exists, would already be a list
+        feed_pointer = "/tmp/new_feed.json"
+        feed = []
 
-    
-    #s3.Bucket("flash-briefing-feeds-acargill").download_file("programmatic_flash_briefing_feed.json", "/tmp/programmatic_flash_briefing_feed.json")
+    new_item = {
+        "uid": str(uuid.uuid4()),
+        "updateDate": event['Records'][0]['eventTime'],
+        "titleText": make_title_text(event['Records'][0]['s3']['object']['key']),
+        "mainText": "",
+        "streamUrl": "https://s3.amazonaws.com/" + event['Records'][0]['s3']['bucket']['name'] + "/" + event['Records'][0]['s3']['object']['key']
+    }
 
+    if frugality:
+        reduced_redundancy(event['Records'][0]['s3']['bucket']['name'], event['Records'][0]['s3']['object']['key'].replace("+", " "))
 
-# To Do:
+    # Making .mp3 file public
+    # Replacing "+" with " " to avoid key error for files with spaces
+    mp3_object = s3.Object(event['Records'][0]['s3']['bucket']['name'], event['Records'][0]['s3']['object']['key'].replace("+", " "))
+    mp3_object.Acl().put(ACL="public-read")
 
-# Tell Boto To Make File Public
-# Use Boto To Set Content Header
+    feed.insert(0, new_item)
 
-# 1. Check if feed file already exists in destination bucket
-# 2a. If Yes - download the existing file (function) input new item to front of dictionary
-# 2b. If No - don't bother downloading existing file and just make a new dictionary with the one item
-# 3. JSONify 
-# 4. Save new file on S3, make public and set content header
+    with io.open(feed_pointer, "w", encoding = "utf-8") as wf:
+        wf.write(json.dumps(feed, indent = 4, sort_keys = True, ensure_ascii = False).decode("utf-8"))
+
+    s3.meta.client.upload_file(feed_pointer, fb_feed_destination_bucket, fb_feed_file_name, ExtraArgs={'ACL': 'public-read','ContentType': "application/json"})
