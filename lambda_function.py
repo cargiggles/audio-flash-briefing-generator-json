@@ -71,12 +71,12 @@ def lambda_handler(event, context):
         'streamUrl': 'https://s3.amazonaws.com/' + mp3_bucket + '/' + mp3_key
     }
 
+    feed.insert(0, new_item)
+
     if frugality:
         change_storage_class(mp3_bucket, mp3_key.replace('+', ' '), 'ONEZONE_IA')
 
     make_object_public(mp3_bucket, mp3_key)
-
-    feed.insert(0, new_item)
 
     with io.open(feed_pointer, 'w', encoding = 'utf-8') as wf:
         wf.write(json.dumps(feed, indent = 4, sort_keys = True, ensure_ascii = False).decode("utf-8"))
