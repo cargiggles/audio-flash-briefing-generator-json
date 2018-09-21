@@ -31,6 +31,13 @@ def build_feed(feed, update_date, title_text, bucket, key):
     feed.insert(0, new_item)
     return feed
 
+def change_storage_class(bucket, key, storage_class):
+    copy_source = {
+        'Bucket': bucket,
+        'Key': key
+    }
+    s3.meta.client.copy(copy_source, bucket, key, ExtraArgs = {'StorageClass': storage_class, 'MetadataDirective': 'COPY'})
+
 def feed_already_exists(bucket, key):
     keys =[]
     for s3_object in bucket.objects.all():
@@ -49,13 +56,6 @@ def make_title_text(key):
     title_text = title_text.replace('.mp3', '') # Removes ".mp3" file extension
     title_text = title_text.replace('+', ' ') # Replace "+" with space. Spaces are converted to "+" in S3 trigger
     return title_text
-
-def change_storage_class(bucket, key, storage_class):
-    copy_source = {
-        'Bucket': bucket,
-        'Key': key
-    }
-    s3.meta.client.copy(copy_source, bucket, key, ExtraArgs = {'StorageClass': storage_class, 'MetadataDirective': 'COPY'})
 
 def lambda_handler(event, context):
     update_date = event['Records'][0]['eventTime']
