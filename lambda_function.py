@@ -9,7 +9,7 @@ import json
 import uuid
 
 # User Settings
-frugality = True
+frugality = False
 single_item_feed = False
 
 # Lambda Environment Variables
