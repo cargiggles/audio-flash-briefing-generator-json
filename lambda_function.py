@@ -1,4 +1,4 @@
-# Audio Flash Briefing Generator - JSON v1.2
+# Audio Flash Briefing Generator - JSON v1.3
 # Andrew Cargill
 # Sept. 13, 2018
 
@@ -74,7 +74,7 @@ def lambda_handler(event, context):
     feed = build_feed(feed, update_date, make_title_text(mp3_key), mp3_bucket, mp3_key)
 
     if frugality:
-        change_storage_class(mp3_bucket, mp3_key.replace('+', ' '), 'ONEZONE_IA')
+        change_storage_class(mp3_bucket, mp3_key.replace('+', ' '), 'INTELLIGENT_TIERING')
 
     make_object_public(mp3_bucket, mp3_key)
 
