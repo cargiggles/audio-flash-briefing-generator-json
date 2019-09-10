@@ -1,6 +1,6 @@
-# Audio Flash Briefing Generator - JSON v1.3
+# Audio Flash Briefing Generator - JSON v1.4
 # Andrew Cargill
-# Sept. 13, 2018
+# Sept. 10, 2019
 
 import boto3
 import os
@@ -9,24 +9,26 @@ import json
 import uuid
 
 # User Settings
-frugality = False
+frugality = True
 single_item_feed = False
 
 # Lambda Environment Variables
 feed_bucket = os.environ['feed_bucket'] # Ex: flash-briefing-feeds-bucket
 feed_key = os.environ['feed_key'] # Ex: breaking_news.json
+redirection_url = os.environ['redirection_url'] # Ex: https://amazon.com
 
 # Boto3 Objects
 s3 = boto3.resource('s3')
 bucket = s3.Bucket(feed_bucket)
 
-def build_feed(feed, update_date, title_text, bucket, key):
+def build_feed(feed, update_date, title_text, bucket, key, redirection_url):
     new_item = {
         'uid': str(uuid.uuid4()),
         'updateDate': update_date,
         'titleText': title_text,
         'mainText': '',
-        'streamUrl': 'https://s3.amazonaws.com/' + bucket + '/' + key
+        'streamUrl': 'https://s3.amazonaws.com/' + bucket + '/' + key,
+        'redirectionUrl': redirection_url
     }
     feed.insert(0, new_item)
     return feed
@@ -71,7 +73,7 @@ def lambda_handler(event, context):
     else:
         feed = []
 
-    feed = build_feed(feed, update_date, make_title_text(mp3_key), mp3_bucket, mp3_key)
+    feed = build_feed(feed, update_date, make_title_text(mp3_key), mp3_bucket, mp3_key, redirection_url)
 
     if frugality:
         change_storage_class(mp3_bucket, mp3_key.replace('+', ' '), 'INTELLIGENT_TIERING')
